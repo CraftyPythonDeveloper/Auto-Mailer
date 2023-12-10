@@ -51,27 +51,40 @@ def send_outlook_email(subject, body, to_addresses, attachment_path=None):
     outlook_app = get_outlook_app()
     mail = outlook_app.CreateItem(0)
     mail.Subject = subject
-    mail.Body = body
-    if isinstance(to_addresses, Iterable):
+    mail.HTMLBody = body
+    if isinstance(to_addresses, Iterable) and not isinstance(to_addresses, str):
         mail.To = ";".join(to_addresses)
     else:
         mail.To = to_addresses
     if isinstance(attachment_path, str):
         mail.Attachments.Add(attachment_path)
     mail.Send()
-    logging.info(f"Email sent successfully at {datetime.now()}")
+    logger.info(f"Email sent successfully at {datetime.now()}")
     return True
+
+
+def get_draft_email_html(email_subject):
+    outlook_app = get_outlook_app()
+    namespace = outlook_app.GetNamespace("MAPI")
+    drafts_folder = namespace.GetDefaultFolder(16)
+    for item in drafts_folder.Items:
+        if item.Subject == email_subject:
+            return item.HTMLBody
+    logger.error("No Matching email subject found in outlook draft. \n"
+                 "Make sure you have a email subject matching to excel saved in draft")
+    input("\nPress any key to exit..")
+    return None
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        logging.error("Invalid command-line arguments. Usage: python auto_mailer.py <group_id>")
+        logger.error("Invalid command-line arguments. Usage: python auto_mailer.py <group_id>")
         sys.exit(1)
 
     group_id = sys.argv[1]
 
     if " " in group_id:
-        logging.info("group_id should not contain any spaces and should be unique in message sheet.")
+        logger.info("group_id should not contain any spaces and should be unique in message sheet.")
         input("Press any key to exit")
         sys.exit()
 
@@ -84,18 +97,17 @@ if __name__ == "__main__":
     message_df.group_id = message_df.group_id.astype(str)
 
     if group_id not in email_df.group_id.tolist() or group_id not in message_df.group_id.tolist():
-        print(f"Group ID {group_id} not found in excel..")
-        input()
+        logger.error(f"Group ID {group_id} not found in excel..")
+        input("Press any key to exit..")
         sys.exit()
 
     subject = get_df_value(message_df, "group_id", group_id, "subject")
-    message = get_df_value(message_df, "group_id", group_id, "message")
+    message = get_draft_email_html(subject)
     attachment = get_df_value(message_df, "group_id", group_id, "attachment")
     emails = get_df_value(email_df, "group_id", group_id, "email", True)
     try:
         status = send_outlook_email(subject=subject, body=message, to_addresses=emails.tolist(),
                                     attachment_path=attachment)
     except Exception as e:
-        logging.error(f"Error sending email: {str(e)}")
-
-    logging.info("Script execution completed.")
+        logger.error(f"Error sending email: {str(e)}")
+    logger.info("Script execution completed.")
